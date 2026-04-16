@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Convert a binary file to a Verilog $readmemh-compatible hex file."""
+
+import argparse
+import os
+import sys
+
+
+def bin2hex(input_file, output_file, word_bytes, mem_depth, endian='little'):
+    with open(input_file, 'rb') as f:
+        data = f.read()
+
+    data_words = (len(data) + word_bytes - 1) // word_bytes
+    print(f"Input size  : {len(data)} bytes")
+    print(f"Word width  : {word_bytes * 8} bits ({word_bytes} bytes/word)")
+    print(f"Byte order  : {endian}-endian")
+    print(f"Data words  : {data_words}")
+
+    if mem_depth is not None:
+        if data_words > mem_depth:
+            print(f"WARNING: data ({data_words} words) exceeds mem_depth ({mem_depth}), truncating.")
+        pad_words = max(0, mem_depth - data_words)
+        print(f"Mem depth   : {mem_depth} (padding {pad_words} zero words)")
+
+    zero_word = '00' * word_bytes
+
+    with open(output_file, 'w') as f:
+        written = 0
+        for i in range(0, len(data), word_bytes):
+            if mem_depth is not None and written >= mem_depth:
+                break
+            chunk = data[i:i + word_bytes]
+            chunk = chunk.ljust(word_bytes, b'\x00')  # pad last word if needed
+            if endian == 'little':
+                chunk = chunk[::-1]  # reverse bytes: little-endian file -> big-endian hex value
+            f.write(chunk.hex() + '\n')
+            written += 1
+        if mem_depth is not None:
+            for _ in range(mem_depth - written):
+                f.write(zero_word + '\n')
+
+    print(f"Output file : {output_file}")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Convert a binary file to a Verilog $readmemh-compatible hex file.'
+    )
+    parser.add_argument('-i', '--input',      required=True,  metavar='FILE',  help='Input binary file')
+    parser.add_argument('-o', '--output',     required=True,  metavar='FILE',  help='Output hex file')
+    parser.add_argument('-w', '--word-bytes', type=int, default=8, metavar='N',
+                        help='Bytes per memory word (default: 8 for 64-bit; use 4 for 32-bit, etc.)')
+    parser.add_argument('-d', '--mem-depth',  type=int, default=None, metavar='N',
+                        help='Memory depth in words. If set, output is zero-padded to this length.')
+    parser.add_argument('-e', '--endian', choices=['little', 'big'], default='little',
+                        help='Byte order of the input binary file (default: little). '
+                             'Use "big" if the file is already in big-endian (MSB first).')
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    args = parse_args()
+
+    if not os.path.exists(args.input):
+        print(f"ERROR: input file not found: '{args.input}'", file=sys.stderr)
+        sys.exit(1)
+
+    bin2hex(args.input, args.output, args.word_bytes, args.mem_depth, args.endian)
