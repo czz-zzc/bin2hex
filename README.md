@@ -9,7 +9,7 @@ Python 3.x，无需安装第三方库。
 ## 用法
 
 ```
-python bin2hex [-h] -i FILE -o FILE [-w N] [-d N] [-e {little,big}]
+python bin2hex [-h] -i FILE -o FILE [-w N] [-d N] [-e {little,big}] [-b]
 ```
 
 ## 参数说明
@@ -21,6 +21,7 @@ python bin2hex [-h] -i FILE -o FILE [-w N] [-d N] [-e {little,big}]
 | `-w` | `--word-bytes` | 每个 memory word 的字节数 | `8`（64 位） |
 | `-d` | `--mem-depth` | 内存深度（word 数），不足时补零行 | 不补零 |
 | `-e` | `--endian` | 输入文件的字节序：`little` 或 `big` | `little` |
+| `-b` | `--binary` | 输出二进制格式（用于 `$readmemb`） | 关闭（默认输出 hex） |
 
 ## 示例
 
@@ -44,9 +45,14 @@ python bin2hex -i rom.bin -o rom_init.hex -w 8 -d 65536
 python bin2hex -i rom.bin -o rom_init.hex -w 8 -d 65536 -e big
 ```
 
+**输出二进制格式（用于 `$readmemb`）：**
+```bash
+python bin2hex -i rom.bin -o rom_init.bin -w 4 -b
+```
+
 ## 字节序说明
 
-`$readmemh` 读取 hex 文件时，每行代表一个 word，高位在左（大端顺序）。
+`$readmemh` 读取 hex 文件时，每行代表一个 word，高位在左（大端顺序）。`$readmemb` 读取二进制格式文件，格式相同但内容为二进制字符串。
 
 - **小端（little-endian，默认）**：bin 文件中每个 word 的低字节在前，脚本会自动翻转字节顺序后写入 hex。
 - **大端（big-endian）**：bin 文件中每个 word 已是高字节在前，直接写入，无需翻转。
@@ -71,10 +77,20 @@ deadbeefcafebabe          ← $readmemh 读入正确的值
 
 ## 在 Verilog 中使用
 
+**$readmemh（十六进制）：**
 ```verilog
 reg [63:0] mem [0:65535];
 
 initial begin
     $readmemh("rom_init.hex", mem);
+end
+```
+
+**$readmemb（二进制）：**
+```verilog
+reg [31:0] mem [0:65535];
+
+initial begin
+    $readmemb("rom_init.bin", mem);
 end
 ```

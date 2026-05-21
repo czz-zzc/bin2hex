@@ -6,7 +6,7 @@ import os
 import sys
 
 
-def bin2hex(input_file, output_file, word_bytes, mem_depth, endian='little'):
+def bin2hex(input_file, output_file, word_bytes, mem_depth, endian='little', binary=False):
     with open(input_file, 'rb') as f:
         data = f.read()
 
@@ -14,6 +14,10 @@ def bin2hex(input_file, output_file, word_bytes, mem_depth, endian='little'):
     print(f"Input size  : {len(data)} bytes")
     print(f"Word width  : {word_bytes * 8} bits ({word_bytes} bytes/word)")
     print(f"Byte order  : {endian}-endian")
+    if binary:
+        print(f"Output fmt  : binary ($readmemb)")
+    else:
+        print(f"Output fmt  : hex ($readmemh)")
     print(f"Data words  : {data_words}")
 
     if mem_depth is not None:
@@ -22,7 +26,10 @@ def bin2hex(input_file, output_file, word_bytes, mem_depth, endian='little'):
         pad_words = max(0, mem_depth - data_words)
         print(f"Mem depth   : {mem_depth} (padding {pad_words} zero words)")
 
-    zero_word = '00' * word_bytes
+    if binary:
+        zero_word = '0' * word_bytes * 8
+    else:
+        zero_word = '00' * word_bytes
 
     with open(output_file, 'w') as f:
         written = 0
@@ -33,7 +40,10 @@ def bin2hex(input_file, output_file, word_bytes, mem_depth, endian='little'):
             chunk = chunk.ljust(word_bytes, b'\x00')  # pad last word if needed
             if endian == 'little':
                 chunk = chunk[::-1]  # reverse bytes: little-endian file -> big-endian hex value
-            f.write(chunk.hex() + '\n')
+            if binary:
+                f.write(format(int.from_bytes(chunk, 'big'), '0{}b'.format(word_bytes * 8)) + '\n')
+            else:
+                f.write(chunk.hex() + '\n')
             written += 1
         if mem_depth is not None:
             for _ in range(mem_depth - written):
@@ -55,6 +65,8 @@ def parse_args():
     parser.add_argument('-e', '--endian', choices=['little', 'big'], default='little',
                         help='Byte order of the input binary file (default: little). '
                              'Use "big" if the file is already in big-endian (MSB first).')
+    parser.add_argument('-b', '--binary', action='store_true',
+                        help='Output binary format instead of hex (for $readmemb).')
     return parser.parse_args()
 
 
@@ -65,4 +77,4 @@ if __name__ == '__main__':
         print(f"ERROR: input file not found: '{args.input}'", file=sys.stderr)
         sys.exit(1)
 
-    bin2hex(args.input, args.output, args.word_bytes, args.mem_depth, args.endian)
+    bin2hex(args.input, args.output, args.word_bytes, args.mem_depth, args.endian, args.binary)
