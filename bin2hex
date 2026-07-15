@@ -6,7 +6,7 @@ import os
 import sys
 
 
-def bin2hex(input_file, output_file, word_bytes, mem_depth, endian='little', binary=False):
+def bin2hex(input_file, output_file, word_bytes, mem_depth, endian='little', binary=False, split=1):
     with open(input_file, 'rb') as f:
         data = f.read()
 
@@ -31,25 +31,62 @@ def bin2hex(input_file, output_file, word_bytes, mem_depth, endian='little', bin
     else:
         zero_word = '00' * word_bytes
 
-    with open(output_file, 'w') as f:
-        written = 0
-        for i in range(0, len(data), word_bytes):
-            if mem_depth is not None and written >= mem_depth:
-                break
-            chunk = data[i:i + word_bytes]
-            chunk = chunk.ljust(word_bytes, b'\x00')  # pad last word if needed
-            if endian == 'little':
-                chunk = chunk[::-1]  # reverse bytes: little-endian file -> big-endian hex value
-            if binary:
-                f.write(format(int.from_bytes(chunk, 'big'), '0{}b'.format(word_bytes * 8)) + '\n')
-            else:
-                f.write(chunk.hex() + '\n')
-            written += 1
-        if mem_depth is not None:
-            for _ in range(mem_depth - written):
-                f.write(zero_word + '\n')
+    def fmt_chunk(chunk):
+        chunk = chunk.ljust(word_bytes, b'\x00')  # pad last word if needed
+        if endian == 'little':
+            chunk = chunk[::-1]  # reverse bytes: little-endian file -> big-endian hex value
+        if binary:
+            return format(int.from_bytes(chunk, 'big'), '0{}b'.format(word_bytes * 8))
+        return chunk.hex()
 
-    print(f"Output file : {output_file}")
+    if split > 1:
+        if mem_depth is None:
+            print("ERROR: --split requires --mem-depth to be set", file=sys.stderr)
+            sys.exit(1)
+        if mem_depth % split != 0:
+            print(f"ERROR: mem_depth ({mem_depth}) must be divisible by split count ({split})",
+                  file=sys.stderr)
+            sys.exit(1)
+        per_file = mem_depth // split
+        print(f"Split       : {split} files, {per_file} words/file")
+
+        # collect all words, pad/truncate to mem_depth
+        words = []
+        for i in range(0, len(data), word_bytes):
+            if len(words) >= mem_depth:
+                break
+            words.append(fmt_chunk(data[i:i + word_bytes]))
+        while len(words) < mem_depth:
+            words.append(zero_word)
+
+        base, ext = os.path.splitext(output_file)
+        for fi in range(split):
+            start = fi * per_file
+            sub_file = f"{base}_{fi}{ext}"
+            with open(sub_file, 'w') as f:
+                for w in words[start:start + per_file]:
+                    f.write(w + '\n')
+            print(f"Output file : {sub_file}")
+    else:
+        with open(output_file, 'w') as f:
+            written = 0
+            for i in range(0, len(data), word_bytes):
+                if mem_depth is not None and written >= mem_depth:
+                    break
+                chunk = data[i:i + word_bytes]
+                chunk = chunk.ljust(word_bytes, b'\x00')  # pad last word if needed
+                if endian == 'little':
+                    chunk = chunk[::-1]  # reverse bytes: little-endian file -> big-endian hex value
+                if binary:
+                    f.write(format(int.from_bytes(chunk, 'big'), '0{}b'.format(word_bytes * 8)) + '\n')
+                else:
+                    f.write(chunk.hex() + '\n')
+                written += 1
+            if mem_depth is not None:
+                for _ in range(mem_depth - written):
+                    f.write(zero_word + '\n')
+
+        print(f"Output file : {output_file}")
 
 
 def parse_args():
@@ -67,6 +104,11 @@ def parse_args():
                              'Use "big" if the file is already in big-endian (MSB first).')
     parser.add_argument('-b', '--binary', action='store_true',
                         help='Output binary format instead of hex (for $readmemb).')
+    parser.add_argument('-s', '--split', type=int, default=1, metavar='N',
+                        help='Split output into N files, each with mem_depth/N words. '
+                             'Requires --mem-depth. mem_depth must be divisible by N. '
+                             'Files are named <base>_<i><ext> (e.g. out.rcf -> out_0.rcf ...). '
+                             'Default: 1 (no split, original behavior).')
     return parser.parse_args()
 
 
@@ -77,4 +119,4 @@ if __name__ == '__main__':
         print(f"ERROR: input file not found: '{args.input}'", file=sys.stderr)
         sys.exit(1)
 
-    bin2hex(args.input, args.output, args.word_bytes, args.mem_depth, args.endian, args.binary)
+    bin2hex(args.input, args.output, args.word_bytes, args.mem_depth, args.endian, args.binary, args.split)
